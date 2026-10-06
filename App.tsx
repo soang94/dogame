@@ -182,10 +182,12 @@ function Game() {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"],
         allowsEditing: false,
-        quality: 0.9,
+        quality: 1,
       });
       if (!result.canceled) {
         const asset = result.assets[0];
+        // Preserve alpha in transparent PNGs; do not re-encode as JPEG.
+
         setDraft({
           uri: asset.uri,
           width: asset.width,
@@ -541,23 +543,146 @@ function FaceEditor({
           <Text style={s.eyebrow}>MEET YOUR DOG</Text>
           <Text style={s.title}>얼굴을 맞춰주세요</Text>
           <Text style={s.editorDescription}>
-            {
-              "사진을 끌어서 위치를 맞추고\n크기를 조절해 얼굴을 원 안에 담아주세요."
-            }
+            {"사진을 끌어서 위치를 맞추고\n크기를 조절해 얼굴을 맞춰주세요."}
           </Text>
         </View>
-        <View style={s.crop} {...pan.panHandlers}>
-          <FacePhoto face={face} size={220} />
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          {(["circle", "cutout"] as const).map((mode) => (
+            <Pressable
+              key={mode}
+              accessibilityRole="button"
+              accessibilityLabel={
+                mode === "circle" ? "원형 사진 모드" : "투명 사진 모드"
+              }
+              accessibilityState={{
+                selected: (face.mode ?? "circle") === mode,
+              }}
+              disabled={busy}
+              onPress={() => {
+                const scale = Math.max(
+                  220 / current.current.width,
+                  220 / current.current.height,
+                );
+                change({
+                  ...current.current,
+                  mode,
+                  zoom: 1,
+                  x: 0,
+                  y:
+                    mode === "cutout"
+                      ? Math.min(
+                          220,
+                          (current.current.height * scale - 220) / 2,
+                        )
+                      : 0,
+                  bottom: 0.85,
+                });
+              }}
+              style={[
+                s.zoomButton,
+                {
+                  width: 120,
+                  borderRadius: 16,
+                  backgroundColor:
+                    (face.mode ?? "circle") === mode ? "#d5dfc5" : "#eceee5",
+                },
+              ]}
+            >
+              <Text style={s.actionText}>
+                {mode === "circle" ? "원형 사진" : "투명 사진"}
+              </Text>
+            </Pressable>
+          ))}
         </View>
+        <View
+          style={[
+            s.crop,
+            face.mode === "cutout" && {
+              borderRadius: 12,
+              backgroundColor: "#d6e5bc",
+            },
+          ]}
+          {...pan.panHandlers}
+        >
+          <View style={{ width: 220, height: 220 }}>
+            <FacePhoto face={face} size={220} />
+            {face.mode === "cutout" && (
+              <View
+                pointerEvents="none"
+                style={{
+                  position: "absolute",
+                  top: 220 * (face.bottom ?? 0.85),
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: "rgba(80,95,65,.2)",
+                  borderTopWidth: 1,
+                  borderTopColor: "#73875a",
+                  borderStyle: "dashed",
+                }}
+              />
+            )}
+          </View>
+        </View>
+        {face.mode === "cutout" && (
+          <>
+            <Text style={s.sub}>
+              배경을 제거한 사진을 사용하세요. 자동 배경 제거는 아니에요.
+            </Text>
+            <View style={s.zoom}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="얼굴 아래 더 자르기"
+                disabled={busy || (face.bottom ?? 0.85) <= 0.45}
+                onPress={() =>
+                  change({
+                    ...current.current,
+                    bottom: Math.max(
+                      0.45,
+                      (current.current.bottom ?? 0.85) - 0.05,
+                    ),
+                  })
+                }
+                style={s.zoomButton}
+              >
+                <Text style={s.zoomText}>−</Text>
+              </Pressable>
+              <Text style={s.sub}>
+                얼굴 아래 {Math.round((face.bottom ?? 0.85) * 100)}%
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="얼굴 아래 더 보이기"
+                disabled={busy || (face.bottom ?? 0.85) >= 1}
+                onPress={() =>
+                  change({
+                    ...current.current,
+                    bottom: Math.min(
+                      1,
+                      (current.current.bottom ?? 0.85) + 0.05,
+                    ),
+                  })
+                }
+                style={s.zoomButton}
+              >
+                <Text style={s.zoomText}>＋</Text>
+              </Pressable>
+            </View>
+            <Text style={s.sub}>아래 몸통이 남으면 −를 눌러 가려주세요.</Text>
+          </>
+        )}
         <View style={s.zoom}>
           <Pressable
-            disabled={busy || face.zoom <= 1}
+            disabled={busy || face.zoom <= (face.mode === "cutout" ? 0.5 : 1)}
             accessibilityRole="button"
             accessibilityLabel="사진 축소"
             onPress={() =>
               change({
                 ...current.current,
-                zoom: Math.max(1, current.current.zoom - 0.15),
+                zoom: Math.max(
+                  current.current.mode === "cutout" ? 0.5 : 1,
+                  current.current.zoom - 0.15,
+                ),
               })
             }
             style={s.zoomButton}

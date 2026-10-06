@@ -98,10 +98,10 @@ export function FacePhoto({ face, size }: { face: Face; size: number }) {
     <View
       style={{
         width: size,
-        height: size,
-        borderRadius: size / 2,
+        height: face.mode === "cutout" ? size * (face.bottom ?? 0.85) : size,
+        borderRadius: face.mode === "cutout" ? 0 : size / 2,
         overflow: "hidden",
-        backgroundColor: "#f4e4c5",
+        backgroundColor: face.mode === "cutout" ? "transparent" : "#f4e4c5",
       }}
     >
       <Image
@@ -229,7 +229,16 @@ export function Dog({
         )}
       </Svg>
       {face && (
-        <View style={s.face}>
+        <View
+          style={[
+            s.face,
+            face.mode === "cutout" && {
+              borderWidth: 0,
+              borderRadius: 0,
+              left: 61,
+            },
+          ]}
+        >
           <FacePhoto face={face} size={128} />
         </View>
       )}

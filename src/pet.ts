@@ -11,6 +11,8 @@ export type Face = {
   zoom: number;
   x: number;
   y: number;
+  mode?: "circle" | "cutout";
+  bottom?: number;
 };
 export const initialPet: Pet = {
   fullness: 80,
@@ -55,12 +57,28 @@ export function readFace(value: unknown): Face | null {
     [f.width, f.height, f.zoom, f.x, f.y].every(Number.isFinite) &&
     f.width > 0 &&
     f.height > 0 &&
-    f.zoom >= 1 &&
+    f.zoom >= (f.mode === "cutout" ? 0.5 : 1) &&
     f.zoom <= 3
-    ? f
+    ? constrainFace({
+        ...f,
+        mode: f.mode === "cutout" ? "cutout" : "circle",
+        bottom: validBottom(f.bottom),
+      })
     : null;
 }
+function validBottom(n: unknown) {
+  return typeof n === "number" && Number.isFinite(n)
+    ? Math.max(0.45, Math.min(1, n))
+    : 0.85;
+}
 export function constrainFace(f: Face): Face {
+  if (f.mode === "cutout")
+    return {
+      ...f,
+      bottom: validBottom(f.bottom),
+      x: Math.max(-220, Math.min(220, f.x)),
+      y: Math.max(-220, Math.min(220, f.y)),
+    };
   const scale = Math.max(220 / f.width, 220 / f.height) * f.zoom;
   const mx = (f.width * scale - 220) / 2,
     my = (f.height * scale - 220) / 2;

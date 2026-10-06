@@ -34,7 +34,7 @@ const assert = require("node:assert/strict");
   await (
     await chooser
   ).setFiles(require("node:path").resolve("assets/icon.png"));
-  await page.getByText("얼굴을 맞춰주세요").waitFor();
+  await page.getByText("얼굴을 맞춰주세요", {exact:true}).waitFor();
   await page.getByRole("button", { name: "사진 확대", exact: true }).click();
   await page.getByText("115%", { exact: true }).waitFor();
   await page
@@ -64,7 +64,7 @@ const assert = require("node:assert/strict");
   await (
     await failedChooser
   ).setFiles(require("node:path").resolve("assets/icon.png"));
-  await page.getByText("얼굴을 맞춰주세요").waitFor();
+  await page.getByText("얼굴을 맞춰주세요", {exact:true}).waitFor();
   await page.evaluate(() => {
     window.originalStorageSetItem = Storage.prototype.setItem;
     Storage.prototype.setItem = function (key, value) {
@@ -76,13 +76,14 @@ const assert = require("node:assert/strict");
   await page
     .getByRole("button", { name: "이 얼굴로 시작하기", exact: true })
     .click();
-  await page.getByRole("dialog")
+  await page
+    .getByRole("dialog")
     .getByText(
       "사진을 저장하지 못했어요. 저장 공간을 확인하고 다시 시도해 주세요.",
       { exact: true },
     )
     .waitFor();
-  assert.equal(await page.getByText("얼굴을 맞춰주세요").count(), 1);
+  assert.equal(await page.getByText("얼굴을 맞춰주세요", {exact:true}).count(), 1);
   assert.equal(
     await page.evaluate(
       () => JSON.parse(localStorage.getItem("dogame:pet:v1")).face.zoom,
@@ -93,6 +94,54 @@ const assert = require("node:assert/strict");
     Storage.prototype.setItem = window.originalStorageSetItem;
   });
   await page.getByRole("button", { name: "취소", exact: true }).click();
+
+  // Use an artificial PNG with real alpha; never publish the user's dog photo.
+  const png = await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 200;
+    canvas.height = 320;
+    const context = canvas.getContext("2d");
+    context.fillStyle = "#ffffff";
+    context.beginPath();
+    context.arc(100, 90, 80, 0, Math.PI * 2);
+    context.fill();
+    return canvas.toDataURL("image/png").split(",")[1];
+  });
+  const cutoutChooser = page.waitForEvent("filechooser");
+  await page
+    .getByRole("button", { name: "강아지 얼굴 사진 선택", exact: true })
+    .click();
+  await (
+    await cutoutChooser
+  ).setFiles({
+    name: "transparent-face.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(png, "base64"),
+  });
+  await page
+    .getByRole("button", { name: "투명 사진 모드", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "얼굴 아래 더 자르기", exact: true })
+    .click();
+  await page.getByRole("button", { name: "사진 축소", exact: true }).click();
+  await page
+    .getByRole("button", { name: "이 얼굴로 시작하기", exact: true })
+    .click();
+  await page.getByText("우리 강아지가 마당에 왔어요!").waitFor();
+  await page.reload();
+  await page.getByText("우리 강아지", { exact: true }).waitFor();
+  const cutout = await page.evaluate(
+    () => JSON.parse(localStorage.getItem("dogame:pet:v1")).face,
+  );
+  assert.equal(cutout.mode, "cutout");
+  assert.ok(Math.abs(cutout.bottom - 0.8) < 1e-9);
+  assert.equal(cutout.zoom, 0.85);
+  assert.equal(
+    cutout.uri.split(",")[1],
+    png,
+    "PNG alpha must survive storage unchanged",
+  );
 
   // A minute in the foreground changes needs; time in the background must not.
   await page.clock.fastForward(60000);
@@ -152,7 +201,7 @@ const assert = require("node:assert/strict");
 
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: care actions, sleep locking, reload persistence, photo selection/zoom/save/reload, photo save failure recovery, foreground decay, background pause/resume, compact screens, no runtime errors",
+    "PASS: care actions, sleep locking, reload persistence, photo selection/zoom/save/reload, transparent PNG mode and crop persistence, photo save failure recovery, foreground decay, background pause/resume, compact screens, no runtime errors",
   );
   await browser.close();
 })().catch((e) => {

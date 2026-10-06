@@ -44,3 +44,30 @@ test("crop never exposes blank edges", () => {
   assert.ok(Math.abs(f.x - 110) < 1e-9);
   assert.ok(Math.abs(f.y) < 1e-9);
 });
+test("old circular photos migrate, transparent crop settings survive reload", () => {
+  const old = readFace({
+    uri: "photo.png",
+    width: 500,
+    height: 800,
+    zoom: 1,
+    x: 0,
+    y: 0,
+  });
+  assert.equal(old.mode, "circle");
+  const cutout = readFace({
+    uri: "photo.png",
+    width: 500,
+    height: 800,
+    zoom: 0.7,
+    x: 30,
+    y: 50,
+    mode: "cutout",
+    bottom: 0.65,
+  });
+  assert.equal(cutout.mode, "cutout");
+  assert.equal(cutout.bottom, 0.65);
+  assert.equal(cutout.x, 30);
+  assert.equal(readFace({ ...cutout, mode: "circle" }), null);
+  assert.equal(constrainFace({ ...cutout, bottom: NaN }).bottom, 0.85);
+  assert.equal(constrainFace({ ...cutout, bottom: 2 }).bottom, 1);
+});
